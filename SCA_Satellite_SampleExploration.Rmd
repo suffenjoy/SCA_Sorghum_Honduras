@@ -1,0 +1,68 @@
+---
+title: "SCA_Satellite_SampleExploration"
+author: "Zhehan"
+date: "November 5, 2019"
+output: html_document
+---
+
+#Package
+```{r}
+library(rgdal)
+library(raster)
+library(qdapRegex)
+```
+
+#Convert kmz to shapefiles 
+```{r}
+path_sample <- "C:/Users/zt92/Box Sync/sorghum_hondurus/shapefiles"
+#List all kmz files
+kmzsample_list <- list.files(path_sample, pattern = "*.kmz", recursive = TRUE, full.names = TRUE)
+kmzsample_list
+#change the extension from .kmz to .zip
+zipsample_list <- gsub(".kmz$", ".zip", kmzsample_list)
+names_list <- qdapRegex::ex_between(zipsample_list, left = "shapefiles/",right = ".zip")
+#Rename them to .zip file 
+file.rename(from = kmzsample_list, zipsample_list)
+#unzip them
+for(i in 1:length(zipsample_list)){
+  unzip(zipsample_list[i], exdir = path_sample)
+  print(zipsample_list[i])
+  file.rename(from = paste0(path_sample,"/Share.kml"), to = paste0(path_sample,"/",names_list[[i]],".kml"))
+}
+
+#read kml files 
+kmlsample_list <- list.files(path_sample, pattern = "*.kml", recursive = TRUE, full.names = TRUE)
+kmlsample_list
+
+#readOGR and write to shapefiles 
+path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/shapefiles/shapefiles"
+for(i in 1:length(kmlsample_list)){
+  #read with readOGR
+  shp <- readOGR(dsn = kmlsample_list[i])
+  #write the shapefiles
+  shapefile(shp, file.path(path_sample_shp, paste0(names_list[i],".shp")))
+}
+
+#combine shapefiles 
+path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/shapefiles/shapefiles"
+shpsample_list <- list.files(path_sample_shp, pattern = "*.shp", full.names = TRUE)
+for(i in 1:length(shpsample_list)){
+  
+}
+
+shp1 <- shapefile(shpsample_list[1])
+shp2 <- shapefile(shpsample_list[2])
+shp3 <- shapefile(shpsample_list[3])
+
+shp1@data
+shp2@data
+
+
+#both of them works fine 
+#shpall <- raster::union(shp1, shp2)
+shpall2 <- raster::bind(shp1,shp2,shp3)
+
+#get an inner buffer 
+plot(shpall2[3,])
+```
+
