@@ -10,17 +10,21 @@ output: html_document
 library(rgdal)
 library(raster)
 library(qdapRegex)
+
+library(XML)
+library(plyr)
+library(dplyr)
 ```
 
 #Convert kmz to shapefiles 
 ```{r}
-path_sample <- "C:/Users/zt92/Box Sync/sorghum_hondurus/shapefiles"
+path_sample <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs"
 #List all kmz files
 kmzsample_list <- list.files(path_sample, pattern = "*.kmz", recursive = TRUE, full.names = TRUE)
 kmzsample_list
 #change the extension from .kmz to .zip
 zipsample_list <- gsub(".kmz$", ".zip", kmzsample_list)
-names_list <- qdapRegex::ex_between(zipsample_list, left = "shapefiles/",right = ".zip")
+names_list <- qdapRegex::ex_between(zipsample_list, left = "Field_BNDs/",right = ".zip")
 #Rename them to .zip file 
 file.rename(from = kmzsample_list, zipsample_list)
 #unzip them
@@ -35,7 +39,7 @@ kmlsample_list <- list.files(path_sample, pattern = "*.kml", recursive = TRUE, f
 kmlsample_list
 
 #readOGR and write to shapefiles 
-path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/shapefiles/shapefiles"
+path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs/shapefiles"
 for(i in 1:length(kmlsample_list)){
   #read with readOGR
   shp <- readOGR(dsn = kmlsample_list[i])
@@ -44,25 +48,188 @@ for(i in 1:length(kmlsample_list)){
 }
 
 #combine shapefiles 
-path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/shapefiles/shapefiles"
+path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs/shapefiles"
 shpsample_list <- list.files(path_sample_shp, pattern = "*.shp", full.names = TRUE)
+shpsample_list
+
+#an empty list to store shapefiles 
+ls_shps <- list()
+#store all shapefiles in a list
 for(i in 1:length(shpsample_list)){
-  
+  ls_shps[[i]] <- shapefile(shpsample_list[i])
+  names(ls_shps)[i] <- names_list[[i]]
 }
 
-shp1 <- shapefile(shpsample_list[1])
-shp2 <- shapefile(shpsample_list[2])
-shp3 <- shapefile(shpsample_list[3])
+#bind them together 
+shpall <- shapefile(shpsample_list[1])
+for(i in 2:length(shpsample_list)){
+  shp <- shapefile(shpsample_list[i])
+  shpall <- raster::bind(shpall, shp)
+}
+
+#find the maximum and minimum extent
+shpall_bnd <- as(extent(shpall),"SpatialPolygons")
+crs(shpall_bnd) <- crs(shpall)
+#output the bnd as a new shapefile
+path_gis <- "C:/Users/zt92/Box Sync/sorghum_hondurus/GIS"
+shapefile(shpall_bnd, file.path(path_gis, "shpall_bnd.shp"))
+shapefile(shpall, file.path(path_gis, "shpall.shp"))
+
+
+plot(shpall, col = "red")
+plot(shpall_bnd, add = TRUE)
 
 shp1@data
 shp2@data
 
 
-#both of them works fine 
-#shpall <- raster::union(shp1, shp2)
-shpall2 <- raster::bind(shp1,shp2,shp3)
+```
+###Create a boundary that covers the field 
+```{r}
+ls_shpout <- list()
+for(i in 1:length(ls_shps)){
+  #outer boundary 
+  shpout <- as(extent(ls_shps[[i]]),"SpatialPolygons")
+  crs(shpout) <- crs(ls_shps[[i]])
+  ls_shpout[[i]] <- shpout 
+}
+#add name 
+names(ls_shpout) <- names(ls_shps)
 
-#get an inner buffer 
-plot(shpall2[3,])
+# have a test
+plot(ls_shpout[[1]])
+plot(ls_shps[[1]], add = TRUE)
+
+```
+
+
+#Planetscope Surface Reflectance
+##do this in Server
+```{r}
+path_plsr <- "/z0/zt92/sorghum_hondurus/Planetscope_SR"
+plsrmeta_ls <- as.list(list.files(path_plsr, pattern = "xml"))
+#list of all udm files
+plsrudm_ls <- as.list(list.files(path_plsr, pattern = "udm"))  
+length(plsrmeta_ls)
+length(plsrudm_ls)
+#list of all sr files
+plsr_ls <- as.list(list.files(path_plsr, pattern = "sr"))
+length(plsr_ls)
+#there're less sr files than udm and metadata files 
+
+#find out the ones that have the same name
+name_srmeta <- sapply(plsrmeta_ls, function(x){rm_between(x, "","_analytic", extract = TRUE)[[1]][1]})
+df_srmeta <- data.frame("names" = name_srmeta, "files.meta" = list.files(path_plsr, pattern = "xml", full.names = TRUE))
+name_srudm <- sapply(plsrudm_ls, function(x){rm_between(x, "","_udm", extract = TRUE)[[1]][1]})
+df_srudm <- data.frame("names" = name_srudm, "files.udm" = list.files(path_plsr, pattern = "udm", full.names = TRUE))
+identical(name_srmeta, name_srudm)
+#merge meta and udm, because there're less meta than udm 
+df_metaudm <- merge(df_srmeta, df_srudm, by = "names")
+
+name_sr <- sapply(plsr_ls, function(x){rm_between(x, "","_analytic", extract = TRUE)[[1]][1]}) 
+df_srimg <- data.frame("names" = name_sr, "files.sr" = list.files(path_plsr, pattern = "sr", full.names = TRUE))
+
+df_sr <- merge(df_srimg, df_metaudm, by = "names")
+dim(df_sr)
+head(df_sr)
+
+#find the dates 
+df_sr$Date <- sapply(df_sr$names, function(x){rm_between(x,"","_",extract = TRUE)[[1]][1]})
+str(df_sr)
+
+#change class
+df_sr$names <- as.character(df_sr$names)
+df_sr$files.sr <- as.character(df_sr$files.sr)
+df_sr$files.meta <- as.character(df_sr$files.meta)
+df_sr$files.udm <- as.character(df_sr$files.udm)
+
+#write the dataframe 
+path_df <- "/z0/zt92/sorghum_hondurus/Dataframes"
+write.csv(df_sr, file.path(path_df, "df_sr.csv"), row.names = FALSE)
+```
+
+##filter by udm 
+###Create subset folder
+```{r}
+#path to store subset 
+path_plsr_sb <- "/z0/zt92/sorghum_hondurus/Planetscope_SR_subset"
+for(i in 1:length(ls_shpout)){
+  dir.create(path = paste(path_plsr_sb, names(ls_shpout)[i],sep = "/"))
+}
+
+#list of the subset folders 
+ls_sbfolders <- list.files(path_plsr_sb, full.names = TRUE)
+```
+
+###Filter with udm   
+```{r}
+#empty list to store the clean df for each location 
+ls_df_clean <- replicate(length(ls_shpout), data.frame(), simplify = FALSE)
+
+#for loop to go through every shapefile 
+start_time <- Sys.time()
+for(i in 1:length(ls_shpout)){
+  #go through every available udm 
+  for(j in 1:dim(df_sr)[1]){
+    #read udm 
+    udm <- raster(df_sr$files.udm[j])
+    udm_ext <- extract(udm, ls_shpout[[i]], fun = sum, df = TRUE)
+    if(dim(udm_ext)[1]!=0){
+      if(udm_ext[,2]==0){
+        ls_df_clean[[i]] <- rbind(ls_df_clean[[i]], df_sr[j,])
+        print(udm_ext)
+      }
+    }
+    print(df_sr$Date[j])
+  }
+}
+end_time <- Sys.time()
+end_time - start_time
+
+#it runs for 2 hours 
+```
+
+###Read the sr data, crop to shapefile, extract the reflectance
+```{r}
+start_time <- Sys.time()
+
+#empty list to store the data
+ls_sr_mean <- replicate(length(ls_shpout), data.frame(), simplify = FALSE)
+
+for(i in 1:length(ls_df_clean)){
+  for(j in 1:dim(ls_df_clean[[i]])[1]){
+    #read files 
+    img <- raster::brick(ls_df_clean[[i]]$files.sr[j])
+    #crop to a small area
+    shpout <- spTransform(ls_shpout[[i]], crs(img))
+    img_crop <- raster::crop(img, shpout)
+    #write the cropped raster
+    writeRaster(img_crop, file.path(ls_sbfolders[i], paste(ls_df_clean[[i]]$names[j], "subset.tif",sep = "_")))
+    
+    #extract the average reflectance of each band for all fields 
+    shp <- spTransform(ls_shps[[i]], crs(img))
+    img_ext <- raster::extract(img_crop, shp, na.rm = TRUE, buffer = 0, df = TRUE, fun = mean)
+    names(img_ext) <- c("Field","B1","B2","B3","B4")
+    img_ext$Field <- names(ls_shps[i])
+    #scale factor is 10,000
+    img_ext$B1 <- img_ext$B1/10000
+    img_ext$B2 <- img_ext$B2/10000
+    img_ext$B3 <- img_ext$B3/10000
+    img_ext$B4 <- img_ext$B4/10000
+    #add dates 
+    img_ext$Date <- ls_df_clean[[i]]$Date[j]
+    #add file names 
+    img_ext$Filename <- ls_df_clean[[i]]$names[j]
+    #add the data frame to existing data frame 
+    ls_sr_mean[[i]] <- rbind(ls_sr_mean[[i]], img_ext)
+    #print to check the progress
+    print(ls_df_clean[[i]]$names[j])
+    
+  }
+}
+
+end_time <- Sys.time()
+end_time - start_time
+
 ```
 
