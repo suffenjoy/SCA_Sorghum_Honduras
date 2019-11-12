@@ -230,6 +230,17 @@ for(i in 1:length(ls_df_clean)){
 
 end_time <- Sys.time()
 end_time - start_time
+#this runs for 12 minutes
+
+#output 
+names(ls_sr_mean) <- names(ls_shps)
+df_sr_mean <- do.call(rbind, ls_sr_mean)
+write.csv(df_sr_mean, file.path(path_df, "df_sr_mean.csv"), row.names = FALSE)
+```
+
+
+#Vegetation Indices for each field 
+```{r}
 
 ```
 
