@@ -10,10 +10,11 @@ output: html_document
 library(rgdal)
 library(raster)
 library(qdapRegex)
-
+library(readxl)
 library(XML)
 library(plyr)
 library(dplyr)
+library(ggplot2)
 ```
 
 #Convert kmz to shapefiles 
@@ -240,7 +241,87 @@ write.csv(df_sr_mean, file.path(path_df, "df_sr_mean.csv"), row.names = FALSE)
 
 
 #Vegetation Indices for each field 
+##do this in local computer
+##read dataframe
 ```{r}
+path_localdf <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Dataframes"
+df_sr_mean <- read.csv(file.path(path_localdf, "df_sr_mean.csv"))
+head(df_sr_mean)
+str(df_sr_mean)
+#change date format
+df_sr_mean$Date <- as.Date(as.character(df_sr_mean$Date), "%Y%m%d")
+
+#merge with class 
+##SCA severity
+SCA_severity <- read_excel(file.path(path_localdf, "SCA_severity.xlsx"))
+str(SCA_severity)
+names(SCA_severity)[1] <- "Field"
+SCA_severity$Field <- as.factor(SCA_severity$Field)
+SCA_severity$Class <- as.factor(SCA_severity$Class)
+SCA_severity$No.Class <- as.factor(SCA_severity$No.Class)
+SCA_severity[17,]
+##merge 
+dim(df_sr_mean)
+df_sr_mean <- base::merge(df_sr_mean, SCA_severity, by = "Field")
+```
+##Calculate VIs
+```{r}
+#ndvi
+df_sr_mean <- df_sr_mean %>% dplyr::mutate(NDVI = (B4-B3)/(B4+B3))
+
+```
+##Time series plot 
+```{r}
+ggplot(df_sr_mean, aes(x = Date, y = NDVI, group = Field)) + geom_point(aes(color = Class)) + geom_line(aes(color = Class))
+
+#different classes 
+##Healthy
+par(mfrow = c(2,3))
+srmean_sb <- subset(df_sr_mean, Class == "healthy crop")
+fid <- unique(srmean_sb$Field)
+for(i in 1:5){
+  srmean_sb_sb <- subset(srmean_sb, Field == fid[i])
+  plot(x = srmean_sb_sb$Date, y = srmean_sb_sb$NDVI, col = "forestgreen", xlab = "Date", ylab = "NDVI from PL", main = unique(srmean_sb_sb$Field), xlim = c(as.Date("2019-05-01"), as.Date("2019-10-10")), ylim = c(0, 0.8))
+}
+
+##SCA infestation 1-25%
+par(mfrow = c(2,3))
+srmean_sb <- subset(df_sr_mean, Class == "SCA infestation 1-25%")
+fid <- unique(srmean_sb$Field)
+for(i in 1:5){
+  srmean_sb_sb <- subset(srmean_sb, Field == fid[i])
+  plot(x = srmean_sb_sb$Date, y = srmean_sb_sb$NDVI, col = "yellow3", xlab = "Date", ylab = "NDVI from PL", main = unique(srmean_sb_sb$Field), xlim = c(as.Date("2019-05-01"), as.Date("2019-10-10")), ylim = c(0, 0.8))
+}
+
+##SCA infestation 26-50%
+par(mfrow = c(2,3))
+srmean_sb <- subset(df_sr_mean, Class == "SCA infestation 26-50%")
+fid <- unique(srmean_sb$Field)
+for(i in 1:5){
+  srmean_sb_sb <- subset(srmean_sb, Field == fid[i])
+  plot(x = srmean_sb_sb$Date, y = srmean_sb_sb$NDVI, col = "chocolate1", xlab = "Date", ylab = "NDVI from PL", main = unique(srmean_sb_sb$Field), xlim = c(as.Date("2019-05-01"), as.Date("2019-10-10")), ylim = c(0, 0.8))
+}
+
+##SCA infestation 51-75%
+par(mfrow = c(2,3))
+srmean_sb <- subset(df_sr_mean, Class == "SCA infestation 51-75%")
+fid <- unique(srmean_sb$Field)
+for(i in 1:5){
+  srmean_sb_sb <- subset(srmean_sb, Field == fid[i])
+  plot(x = srmean_sb_sb$Date, y = srmean_sb_sb$NDVI, col = "brown1", xlab = "Date", ylab = "NDVI from PL", main = unique(srmean_sb_sb$Field), xlim = c(as.Date("2019-05-01"), as.Date("2019-10-10")), ylim = c(0, 0.8))
+}
+
+##SCA infestation 76-100%
+par(mfrow = c(2,3))
+srmean_sb <- subset(df_sr_mean, Class == "SCA infestation 76-100%")
+fid <- unique(srmean_sb$Field)
+for(i in 1:5){
+  srmean_sb_sb <- subset(srmean_sb, Field == fid[i])
+  plot(x = srmean_sb_sb$Date, y = srmean_sb_sb$NDVI, col = "black", xlab = "Date", ylab = "NDVI from PL", main = unique(srmean_sb_sb$Field), xlim = c(as.Date("2019-05-01"), as.Date("2019-10-10")), ylim = c(0, 0.8))
+}
+
+
+
 
 ```
 
