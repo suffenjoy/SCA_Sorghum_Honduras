@@ -19,7 +19,8 @@ library(ggplot2)
 
 #Convert kmz to shapefiles 
 ```{r}
-path_sample <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs"
+path_sample <- "C:/Users/tangz/Box Sync/sorghum_honduras/Field_BNDs"
+#path_sample <- "C:/Users/zt92/Box Sync/sorghum_honduras/Field_BNDs"
 #List all kmz files
 kmzsample_list <- list.files(path_sample, pattern = "*.kmz", recursive = TRUE, full.names = TRUE)
 kmzsample_list
@@ -40,7 +41,8 @@ kmlsample_list <- list.files(path_sample, pattern = "*.kml", recursive = TRUE, f
 kmlsample_list
 
 #readOGR and write to shapefiles 
-path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs/shapefiles"
+#path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs/shapefiles"
+path_sample_shp <- "C:/Users/tangz/Box Sync/sorghum_honduras/Field_BNDs/shapefiles"
 for(i in 1:length(kmlsample_list)){
   #read with readOGR
   shp <- readOGR(dsn = kmlsample_list[i])
@@ -49,9 +51,15 @@ for(i in 1:length(kmlsample_list)){
 }
 
 #combine shapefiles 
-path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs/shapefiles"
 shpsample_list <- list.files(path_sample_shp, pattern = "*.shp", full.names = TRUE)
 shpsample_list
+#keep only the names 
+shpsample_names <- unlist(rm_between(shpsample_list, left = "shapefiles/", right = ".shp", extract = TRUE))
+shpsample_names 
+
+#delete kmz files that only have points 
+##281001 and 109002 are points 
+shpsample_list <- shpsample_list[-c(13,33)]
 
 #an empty list to store shapefiles 
 ls_shps <- list()
@@ -61,27 +69,32 @@ for(i in 1:length(shpsample_list)){
   names(ls_shps)[i] <- names_list[[i]]
 }
 
+
+
 #bind them together 
 shpall <- shapefile(shpsample_list[1])
 for(i in 2:length(shpsample_list)){
   shp <- shapefile(shpsample_list[i])
   shpall <- raster::bind(shpall, shp)
 }
+#a simplified version of shpall for GEE
+shpall_gee <- shpall
+shpall_gee@data <- data.frame("ID" = shpsample_names)
+shpall_gee
 
 #find the maximum and minimum extent
 shpall_bnd <- as(extent(shpall),"SpatialPolygons")
 crs(shpall_bnd) <- crs(shpall)
 #output the bnd as a new shapefile
-path_gis <- "C:/Users/zt92/Box Sync/sorghum_hondurus/GIS"
-shapefile(shpall_bnd, file.path(path_gis, "shpall_bnd.shp"))
-shapefile(shpall, file.path(path_gis, "shpall.shp"))
-
+#path_gis <- "C:/Users/zt92/Box Sync/sorghum_hondurus/GIS"
+path_gis <- "C:/Users/tangz/Box Sync/sorghum_honduras/GIS"
+shapefile(shpall_bnd, file.path(path_gis, "shpall_bnd.shp"), overwrite = TRUE)
+shapefile(shpall, file.path(path_gis, "shpall.shp"), overwrite = TRUE)
+shapefile(shpall_gee, file.path(path_gis, "shpall_gee.shp"))
 
 plot(shpall, col = "red")
 plot(shpall_bnd, add = TRUE)
 
-shp1@data
-shp2@data
 
 
 ```
