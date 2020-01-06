@@ -15,6 +15,7 @@ library(XML)
 library(plyr)
 library(dplyr)
 library(ggplot2)
+library(tidyverse)
 ```
 
 #Convert kmz to shapefiles 
@@ -116,7 +117,149 @@ plot(ls_shps[[1]], add = TRUE)
 
 ```
 
+#GEE Sentinel
+##Read csv data
+```{r}
+path_gee <- "C:/Users/tangz/Box Sync/sorghum_honduras/GEE"
 
+#S2 SR with Cloudmask
+S2SR_CM_NDVI <- read.csv(file.path(path_gee, "S2SR_CM_NDVI_20180101_20191001.csv"))
+S2SR_CM_NDVI <- S2SR_CM_NDVI[,c("ID","imageId","mean")]
+names(S2SR_CM_NDVI) <- c("ID","Date","NDVI")
+S2SR_CM_NDVI$Date <- as.Date(sapply(rm_between(S2SR_CM_NDVI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2SR_CM_NDVI)
+
+#S2 SR without cloudmaks 
+S2SR_NDVI <- read.csv(file.path(path_gee, "S2SR_NDVI_20180101_20191001.csv"))
+S2SR_NDVI <- S2SR_NDVI[,c("ID","imageId","mean")]
+names(S2SR_NDVI) <- c("ID","Date","NDVI")
+S2SR_NDVI$Date <- as.Date(sapply(rm_between(S2SR_NDVI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2SR_NDVI)
+
+#S2 with cloudmask
+S2_CM_NDVI <- read.csv(file.path(path_gee, "S2_CM_NDVI_20180101_20191001.csv"))
+S2_CM_NDVI <- S2_CM_NDVI[,c("ID","imageId","mean")]
+names(S2_CM_NDVI) <- c("ID","Date","NDVI")
+S2_CM_NDVI$Date <- as.Date(sapply(rm_between(S2_CM_NDVI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2_CM_NDVI)
+
+#S2 without cloudmaks 
+S2_NDVI <- read.csv(file.path(path_gee, "S2_NDVI_20180101_20191001.csv"))
+S2_NDVI <- S2_NDVI[,c("ID","imageId","mean")]
+names(S2_NDVI) <- c("ID","Date","NDVI")
+S2_NDVI$Date <- as.Date(sapply(rm_between(S2_NDVI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2_NDVI)
+```
+
+#Ground Truth data
+```{r}
+path_df <- "C:/Users/tangz/Box Sync/sorghum_honduras/Dataframes"
+severity <- read.csv(file.path(path_df, "groundtruth_sample.csv"), na.strings = c("."," ",99))
+str(severity)
+temp_df <- merge(severity, shpall_gee, by = "ID")
+temp_df
+
+
+#merge with time series data
+S2_NDVI <- merge(S2_NDVI, temp_df, by = "ID")
+S2_CM_NDVI <- merge(S2_CM_NDVI, temp_df, by = "ID")
+S2SR_CM_NDVI <- merge(S2SR_CM_NDVI, temp_df, by = "ID")
+S2SR_NDVI <- merge(S2SR_NDVI, temp_df, by = "ID")
+```
+
+#Plot time series data 
+##Simple plots
+```{r}
+par(mfrow = c(2,2))
+
+#S2 no cloud mask
+ls_S2_NDVI <- split(S2_NDVI, S2_NDVI$ID)
+for(i in 1:length(ls_S2_NDVI)){
+  plot(x = ls_S2_NDVI[[i]]$Date, y  = ls_S2_NDVI[[i]]$NDVI, main = paste(unique(ls_S2_NDVI[[i]]$ID), unique(ls_S2_NDVI[[i]]$Severity), sep = " "), xlab = "Date", ylab= "NDVI")
+}
+
+
+#S2 with cloud mask 
+ls_S2_CM_NDVI <- split(S2_CM_NDVI, S2_CM_NDVI$ID)
+for(i in 1:length(ls_S2_CM_NDVI)){
+  plot(x = ls_S2_CM_NDVI[[i]]$Date, y  = ls_S2_CM_NDVI[[i]]$NDVI, main = paste(unique(ls_S2_CM_NDVI[[i]]$ID), unique(ls_S2_CM_NDVI[[i]]$Severity), sep = " "), xlab = "Date", ylab= "NDVI")
+}
+
+#S2SR no cloud mask
+ls_S2SR_NDVI <- split(S2SR_NDVI, S2SR_NDVI$ID)
+for(i in 1:length(ls_S2SR_NDVI)){
+  plot(x = ls_S2SR_NDVI[[i]]$Date, y  = ls_S2SR_NDVI[[i]]$NDVI, main = paste(unique(ls_S2SR_NDVI[[i]]$ID), unique(ls_S2SR_NDVI[[i]]$Severity), sep = " "), xlab = "Date", ylab= "NDVI")
+}
+
+#S2SR with cloud mask 
+ls_S2SR_CM_NDVI <- split(S2SR_CM_NDVI, S2SR_CM_NDVI$ID)
+for(i in 1:length(ls_S2SR_CM_NDVI)){
+  plot(x = ls_S2SR_CM_NDVI[[i]]$Date, y  = ls_S2SR_CM_NDVI[[i]]$NDVI, main = paste(unique(ls_S2SR_CM_NDVI[[i]]$ID), unique(ls_S2SR_CM_NDVI[[i]]$Severity), sep = " "), xlab = "Date", ylab= "NDVI")
+}
+```
+The S2 with cloud mask seems to be the best
+
+##Combine with other known information of when the infestation happen
+The first growing saeson is from 2018.5 to 2018.9, the second growing season is from 2018.12 to 2019.3
+```{r}
+par(mfrow = c(6,6), mar = c(1,1,3,1))
+ls_S2_CM_NDVI <- split(S2_CM_NDVI, S2_CM_NDVI$ID)
+for(i in 1:length(ls_S2_CM_NDVI)){
+  
+  plot(x = ls_S2_CM_NDVI[[i]]$Date, y  = ls_S2_CM_NDVI[[i]]$NDVI, main = paste(unique(ls_S2_CM_NDVI[[i]]$ID), unique(ls_S2_CM_NDVI[[i]]$Severity), sep = " "), xlab = "", ylab = "", ylim = c(0,1))
+  abline(v = c(as.Date("2018-05-01"), as.Date("2018-09-30")), col = "forestgreen")
+  abline(v = c(as.Date("2018-12-01"), as.Date("2019-03-30")), col = "green")
+  #abline(v = unique(ls_S2_CM_NDVI[[i]]$Month_detected))
+
+}
+
+#zoom in to different growing season
+##1st season 
+par(mfrow = c(6,6), mar = c(1,1,3,1))
+for(i in 1:length(ls_S2_CM_NDVI)){
+  temp = subset(ls_S2_CM_NDVI[[i]], Date >= "2018-03-01" & Date <= "2018-11-30")
+  plot(x = temp$Date, y = temp$NDVI, main = paste(unique(temp$ID), unique(temp$Severity), sep = " "), xlab = "", ylab = "", ylim = c(0,1))
+  abline(v = c(as.Date("2018-05-01"), as.Date("2018-09-30")), col = "forestgreen")
+}
+##2nd season 
+par(mfrow = c(6,6), mar = c(1,1,3,1))
+for(i in 1:length(ls_S2_CM_NDVI)){
+  temp = subset(ls_S2_CM_NDVI[[i]], Date >= "2018-10-01" & Date <= "2019-05-30")
+  plot(x = temp$Date, y = temp$NDVI, main = paste(unique(temp$ID), unique(temp$Severity), sep = " "), xlab = "", ylab = "", ylim = c(0,1))
+  abline(v = c(as.Date("2018-12-01"), as.Date("2019-03-30")), col = "green")
+}
+for(i in 1:length(ls_S2_CM_NDVI)){
+  #growing season
+  if(is.na(unique(ls_S2_CM_NDVI[[i]]$Season))==TRUE){
+    temp = ls_S2_CM_NDVI[[i]]
+    plot(x = temp$Date, y = temp$NDVI, main = paste(unique(temp$ID), unique(temp$Severity), sep = " "), xlab = "", ylab = "", ylim = c(0,1))
+  }else{
+    #1st growing season
+    if(unique(ls_S2_CM_NDVI[[i]]$Season) == 1){
+      temp = subset(ls_S2_CM_NDVI[[i]], Date >= "2018-03-01" & Date <= "2018-11-30")
+      plot(x = temp$Date, y = temp$NDVI, main = paste(unique(temp$ID), unique(temp$Severity), sep = " "), xlab = "", ylab = "" , ylim = c(0,1))
+      abline(v = c(as.Date("2018-05-01"), as.Date("2018-09-30")), col = "forestgreen")
+    }
+    #2nd growing season 
+    if(unique(ls_S2_CM_NDVI[[i]]$Season) == 2){
+      temp = subset(ls_S2_CM_NDVI[[i]], Date >= "2018-10-01" & Date <= "2019-05-30")
+      plot(x = temp$Date, y = temp$NDVI, main = paste(unique(temp$ID), unique(temp$Severity), sep = " "), xlab = "", ylab = "" , ylim = c(0,1))
+      abline(v = c(as.Date("2018-12-01"), as.Date("2019-03-30")), col = "green")
+    }
+    #1st and 2nd growing season 
+    if(unique(ls_S2_CM_NDVI[[i]]$Season) == '1,2'){
+      temp = ls_S2_CM_NDVI[[i]]
+      plot(x = temp$Date, y = temp$NDVI, main = paste(unique(temp$ID), unique(temp$Severity), sep = " "), xlab = "", ylab = "" , ylim = c(0,1))
+      abline(v = c(as.Date("2018-05-01"), as.Date("2018-09-30")), col = "forestgreen")
+      abline(v = c(as.Date("2018-12-01"), as.Date("2019-03-30")), col = "green")
+  }
+  }
+
+}
+```
+
+
+#---------------------------------------------------------------#
 #Planetscope Surface Reflectance
 ##do this in Server
 ```{r}
