@@ -9,25 +9,26 @@ output: html_document
 ```{r}
 library(rgdal)
 library(raster)
+library(rlist)
 library(qdapRegex)
 library(readxl)
 library(XML)
 library(plyr)
 library(dplyr)
 library(ggplot2)
-library(tidyverse)
 ```
 
 #Convert kmz to shapefiles 
 ```{r}
-path_sample <- "C:/Users/tangz/Box Sync/sorghum_honduras/Field_BNDs"
+path_sample <- "C:/Users/zt92/Box Sync/sorghum_honduras/Field_BNDs_sorghumonly"
+#path_sample <- "C:/Users/tangz/Box Sync/sorghum_honduras/Field_BNDs"
 #path_sample <- "C:/Users/zt92/Box Sync/sorghum_honduras/Field_BNDs"
 #List all kmz files
 kmzsample_list <- list.files(path_sample, pattern = "*.kmz", recursive = TRUE, full.names = TRUE)
 kmzsample_list
 #change the extension from .kmz to .zip
 zipsample_list <- gsub(".kmz$", ".zip", kmzsample_list)
-names_list <- qdapRegex::ex_between(zipsample_list, left = "Field_BNDs/",right = ".zip")
+names_list <- qdapRegex::ex_between(zipsample_list, left = "Field_BNDs_sorghumonly/",right = ".zip")
 #Rename them to .zip file 
 file.rename(from = kmzsample_list, zipsample_list)
 #unzip them
@@ -43,7 +44,8 @@ kmlsample_list
 
 #readOGR and write to shapefiles 
 #path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_hondurus/Field_BNDs/shapefiles"
-path_sample_shp <- "C:/Users/tangz/Box Sync/sorghum_honduras/Field_BNDs/shapefiles"
+path_sample_shp <- "C:/Users/zt92/Box Sync/sorghum_honduras/Field_BNDs_sorghumonly/shapefiles"
+#path_sample_shp <- "C:/Users/tangz/Box Sync/sorghum_honduras/Field_BNDs_sorghumonly/shapefiles"
 for(i in 1:length(kmlsample_list)){
   #read with readOGR
   shp <- readOGR(dsn = kmlsample_list[i])
@@ -60,7 +62,7 @@ shpsample_names
 
 #delete kmz files that only have points 
 ##281001 and 109002 are points 
-shpsample_list <- shpsample_list[-c(13,33)]
+#shpsample_list <- shpsample_list[-c(13,33)]
 
 #an empty list to store shapefiles 
 ls_shps <- list()
@@ -87,11 +89,11 @@ shpall_gee
 shpall_bnd <- as(extent(shpall),"SpatialPolygons")
 crs(shpall_bnd) <- crs(shpall)
 #output the bnd as a new shapefile
-#path_gis <- "C:/Users/zt92/Box Sync/sorghum_hondurus/GIS"
-path_gis <- "C:/Users/tangz/Box Sync/sorghum_honduras/GIS"
-shapefile(shpall_bnd, file.path(path_gis, "shpall_bnd.shp"), overwrite = TRUE)
-shapefile(shpall, file.path(path_gis, "shpall.shp"), overwrite = TRUE)
-shapefile(shpall_gee, file.path(path_gis, "shpall_gee.shp"))
+path_gis <- "C:/Users/zt92/Box Sync/sorghum_honduras/GIS"
+#path_gis <- "C:/Users/tangz/Box Sync/sorghum_honduras/GIS"
+shapefile(shpall_bnd, file.path(path_gis, "shp_sorghum_bnd_gee.shp"), overwrite = TRUE)
+#shapefile(shpall, file.path(path_gis, "shpall.shp"), overwrite = TRUE)
+shapefile(shpall_gee, file.path(path_gis, "shp_sorghum_gee.shp"))
 
 plot(shpall, col = "red")
 plot(shpall_bnd, add = TRUE)
@@ -118,6 +120,26 @@ plot(ls_shps[[1]], add = TRUE)
 ```
 
 #GEE Sentinel
+##New sorghum only data: Read NDVI and GNDVI mean data
+```{r}
+path_gee <- "C:/Users/zt92/Box Sync/sorghum_honduras/GEE"
+
+#NDVI average
+S2_CM_NDVI <- read.csv(file.path(path_gee, "S2_CM_sorghum_NDVI_20170101_20200101.csv"))
+S2_CM_NDVI <- S2_CM_NDVI[,c("ID","imageId","mean")]
+names(S2_CM_NDVI) <- c("ID","Date","NDVI")
+S2_CM_NDVI$Date <- as.Date(sapply(rm_between(S2_CM_NDVI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2_CM_NDVI)
+
+#GNDVI average
+S2_CM_GNDVI <- read.csv(file.path(path_gee, "S2_CM_sorghum_GNDVI_20170101_20200101.csv"))
+S2_CM_GNDVI <- S2_CM_GNDVI[,c("ID","imageId","mean")]
+names(S2_CM_GNDVI) <- c("ID","Date","GNDVI")
+S2_CM_GNDVI$Date <- as.Date(sapply(rm_between(S2_CM_GNDVI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2_CM_GNDVI)
+
+```
+
 ##Read NDVI csv data
 ```{r}
 path_gee <- "C:/Users/tangz/Box Sync/sorghum_honduras/GEE"
@@ -200,6 +222,34 @@ head(S2_CM_GNDVIsd)
 
 
 #Ground Truth data
+##New sorghum only data
+```{r}
+path_raw <- "C:/Users/zt92/Box Sync/Mapping SCA of Sorghum in Honduras/data/sample for exploration"
+healthy <- list.files(file.path(path_raw, "healthy crop"))
+healthy <- data.frame("Class" = "Healthy", ID = sapply(strsplit(healthy, ".kmz"),"[",1))
+healthy
+sca_1_25 <- list.files(file.path(path_raw, "SCA infestation 1-25%"))
+sca_1_25 <- data.frame("Class" = "SCA 1-25%", ID = sapply(strsplit(sca_1_25, ".kmz"), "[", 1))
+sca_1_25
+sca_26_50 <- list.files(file.path(path_raw, "SCA infestation 26-50%"))
+sca_26_50 <- data.frame("Class" = "SCA 26-50%", ID = sapply(strsplit(sca_26_50, ".kmz"), "[", 1))
+sca_26_50
+sca_51_75 <- list.files(file.path(path_raw, "SCA infestation 51-75%"))
+sca_51_75 <- data.frame("Class" = "SCA 51-75%", ID = sapply(strsplit(sca_51_75, ".kmz"), "[", 1))
+sca_51_75
+sca_76_100 <- list.files(file.path(path_raw, "SCA infestation 76-100%"))
+sca_76_100 <- data.frame("Class" = "SCA 76-100%", ID = sapply(strsplit(sca_76_100, ".kmz"), "[", 1))
+sca_76_100
+#combine them together 
+severity <- rbind(healthy, sca_1_25, sca_26_50, sca_51_75, sca_76_100)
+dim(severity)
+str(severity)
+#merge with the ndvi and gndvi data
+S2_CM_NDVI <- merge(S2_CM_NDVI,severity, by = "ID")
+S2_CM_GNDVI <- merge(S2_CM_GNDVI, severity, by = "ID")
+
+```
+##Old data
 ```{r}
 path_df <- "C:/Users/tangz/Box Sync/sorghum_honduras/Dataframes"
 severity <- read.csv(file.path(path_df, "groundtruth_sample.csv"), na.strings = c("."," ",99))
@@ -226,6 +276,51 @@ S2_CM_GNDVIsd <- merge(S2_CM_GNDVIsd, temp_df, by = "ID")
 ```
 
 #Plot time series data 
+##New sorghum only data (entire time series)
+```{r}
+###NDVI
+par(mfrow = c(5,5), mar = c(2,1,2,1))
+ls_S2_CM_NDVI <- split(S2_CM_NDVI, S2_CM_NDVI$ID)
+severity_color <- unique(S2_CM_NDVI$Class)
+for(i in 1:length(ls_S2_CM_NDVI)){
+  ls_S2_CM_NDVI[[i]]$Class
+  plot(x = ls_S2_CM_NDVI[[i]]$Date, y = ls_S2_CM_NDVI[[i]]$NDVI, main = paste(unique(ls_S2_CM_NDVI[[i]]$ID), unique(ls_S2_CM_NDVI[[i]]$Class), sep = " "), ylab =  "NDVI", col = which(severity_color==unique(ls_S2_CM_NDVI[[i]]$Class)), pch = 20,xlab = "", sub = "", ylim = c(0, 1), xaxt="n")
+  axis.Date(1, at = seq(min(ls_S2_CM_NDVI[[i]]$Date), max(ls_S2_CM_NDVI[[i]]$Date), by = "6 mon"), format = "%Y-%m")
+}
+
+###GNDVI
+par(mfrow = c(5,5), mar = c(2,1,2,1))
+ls_S2_CM_GNDVI <- split(S2_CM_GNDVI, S2_CM_GNDVI$ID)
+severity_color <- unique(S2_CM_GNDVI$Class)
+for(i in 1:length(ls_S2_CM_GNDVI)){
+  ls_S2_CM_GNDVI[[i]]$Class
+  plot(x = ls_S2_CM_GNDVI[[i]]$Date, y = ls_S2_CM_GNDVI[[i]]$GNDVI, main = paste(unique(ls_S2_CM_GNDVI[[i]]$ID), unique(ls_S2_CM_GNDVI[[i]]$Class), sep = " "), ylab =  "GNDVI", col = which(severity_color==unique(ls_S2_CM_GNDVI[[i]]$Class)), pch = 20,xlab = "", sub = "", ylim = c(0, 0.8), xaxt="n")
+  axis.Date(1, at = seq(min(ls_S2_CM_GNDVI[[i]]$Date), max(ls_S2_CM_GNDVI[[i]]$Date), by = "6 mon"), format = "%Y-%m")
+}
+```
+
+##New sorghum only data (2018 only)
+```{r}
+###NDVI
+par(mfrow = c(5,5), mar = c(2,1,2,1))
+ls_S2_CM_NDVI <- split(S2_CM_NDVI, S2_CM_NDVI$ID)
+severity_color <- unique(S2_CM_NDVI$Class)
+for(i in 1:length(ls_S2_CM_NDVI)){
+  temp_df = subset(ls_S2_CM_NDVI[[i]], Date > "2018-01-01" & Date < "2019-02-01")
+  plot(x = temp_df$Date, y = temp_df$NDVI, main = paste(unique(temp_df$ID), unique(temp_df$Class), sep = " "), ylab =  "NDVI", col = which(severity_color==unique(temp_df$Class)), pch = 20,xlab = "", sub = "", ylim = c(0, 1), xaxt="n")
+  axis.Date(1, at = seq(min(temp_df$Date), max(temp_df$Date), by = "3 mon"), format = "%Y-%m")
+}
+
+###GNDVI
+par(mfrow = c(5,5), mar = c(2,1,2,1))
+ls_S2_CM_GNDVI <- split(S2_CM_GNDVI, S2_CM_GNDVI$ID)
+severity_color <- unique(S2_CM_GNDVI$Class)
+for(i in 1:length(ls_S2_CM_GNDVI)){
+  temp_df = subset(ls_S2_CM_GNDVI[[i]], Date > "2018-01-01" & Date < "2019-02-01")
+  plot(x = temp_df$Date, y = temp_df$GNDVI, main = paste(unique(temp_df$ID), unique(temp_df$Class), sep = " "), ylab =  "GNDVI", col = which(severity_color==unique(temp_df$Class)), pch = 20,xlab = "", sub = "", ylim = c(0, 0.8), xaxt="n")
+  axis.Date(1, at = seq(min(temp_df$Date), max(temp_df$Date), by = "3 mon"), format = "%Y-%m")
+}
+```
 ##Simple plots of NDVI
 ```{r}
 par(mfrow = c(2,2))
@@ -467,6 +562,28 @@ for(i in 1:length(ls_S2_CM_GNDVIsd)){
   }
 
 }
+
+```
+#Boxplot
+```{r}
+#maximum NDVI 
+df_maxNDVI <- data.frame(maxNDVI=sapply(ls_S2_CM_NDVI, function(x){max(subset(x, Date >= "2018-04-15" & Date <= "2019-01-01")$NDVI, na.rm = TRUE)}), ID = names(ls_S2_CM_NDVI))
+row.names(df_maxNDVI) <- NULL
+df_maxNDVI <- merge(df_maxNDVI, severity, by = "ID")
+head(df_maxNDVI)
+ggplot(df_maxNDVI, aes(x = Class, y = maxNDVI)) + geom_boxplot(aes(color = Class))+theme_bw()
+
+#minimum NDVI
+df_minNDVI <- data.frame(minNDVI=sapply(ls_S2_CM_NDVI, function(x){min(subset(x, Date >= "2018-06-01" & Date <= "2019-10-01")$NDVI, na.rm = TRUE)}), ID = names(ls_S2_CM_NDVI))
+row.names(df_minNDVI) <- NULL
+df_minNDVI <- merge(df_minNDVI, severity, by = "ID")
+head(df_minNDVI)
+ggplot(df_minNDVI, aes(x = Class, y = minNDVI)) + geom_boxplot(aes(color = Class))+theme_bw()
+
+#difference
+df_sumNDVI <- merge(df_maxNDVI, df_minNDVI, by = c("ID", "Class"))
+df_sumNDVI$diffNDVI <- df_sumNDVI$maxNDVI - df_sumNDVI$minNDVI
+ggplot(df_sumNDVI, aes(x = Class, y = diffNDVI)) + geom_boxplot(aes(color = Class))+theme_bw()
 
 ```
 
