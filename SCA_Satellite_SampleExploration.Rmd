@@ -16,6 +16,7 @@ library(XML)
 library(plyr)
 library(dplyr)
 library(ggplot2)
+library(lubridate)
 ```
 
 #Convert kmz to shapefiles 
@@ -101,6 +102,15 @@ plot(shpall_bnd, add = TRUE)
 
 
 ```
+###Area distribution 
+```{r}
+par(mfrow = c(1,1))
+hist(area(shpall))
+summary(area(shpall))
+summary(area(shpall_gee))
+
+```
+
 ###Create a boundary that covers the field 
 ```{r}
 ls_shpout <- list()
@@ -138,6 +148,19 @@ names(S2_CM_GNDVI) <- c("ID","Date","GNDVI")
 S2_CM_GNDVI$Date <- as.Date(sapply(rm_between(S2_CM_GNDVI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
 head(S2_CM_GNDVI)
 
+#SIPI average
+S2_CM_SIPI <- read.csv(file.path(path_gee, "S2_CM_sorghum_SIPI_20170101_20200101.csv"))
+S2_CM_SIPI <- S2_CM_SIPI[,c("ID","imageId","mean")]
+names(S2_CM_SIPI) <- c("ID","Date","SIPI")
+S2_CM_SIPI$Date <- as.Date(sapply(rm_between(S2_CM_SIPI$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2_CM_SIPI)
+
+#SIPI average
+S2_CM_GCL <- read.csv(file.path(path_gee, "S2_CM_sorghum_GCL_20170101_20200101.csv"))
+S2_CM_GCL <- S2_CM_GCL[,c("ID","imageId","mean")]
+names(S2_CM_GCL) <- c("ID","Date","GCL")
+S2_CM_GCL$Date <- as.Date(sapply(rm_between(S2_CM_GCL$Date, left = "", right = "T", extract = TRUE), '[',1), "%Y%m%d")
+head(S2_CM_GCL)
 ```
 
 ##Read NDVI csv data
@@ -247,6 +270,8 @@ str(severity)
 #merge with the ndvi and gndvi data
 S2_CM_NDVI <- merge(S2_CM_NDVI,severity, by = "ID")
 S2_CM_GNDVI <- merge(S2_CM_GNDVI, severity, by = "ID")
+S2_CM_GCL <- merge(S2_CM_GCL, severity, by = "ID")
+S2_CM_SIPI <- merge(S2_CM_SIPI, severity, by =  "ID")
 
 ```
 ##Old data
@@ -585,6 +610,48 @@ df_sumNDVI <- merge(df_maxNDVI, df_minNDVI, by = c("ID", "Class"))
 df_sumNDVI$diffNDVI <- df_sumNDVI$maxNDVI - df_sumNDVI$minNDVI
 ggplot(df_sumNDVI, aes(x = Class, y = diffNDVI)) + geom_boxplot(aes(color = Class))+theme_bw()
 
+```
+#Weather data
+```{r}
+path_weather <- "C:/Users/zt92/Box Sync/sorghum_honduras/Weather"
+
+#precipitation
+era5tp <- read.csv(file.path(path_weather, "era5tp_ts.csv"))
+era5tp <- era5tp[,c("ID","imageId","mean")]
+names(era5tp) <- c("ID","Date","precipitation")
+era5tp$Date <- ymd(era5tp$Date)
+head(era5tp)
+dim(era5tp) #51418
+
+#temperature
+era52mt <- read.csv(file.path(path_weather, "era52mt_ts.csv"))
+era52mt <- era52mt[,c("ID","imageId","mean")]
+names(era52mt) <- c("ID","Date","temperature")
+era52mt$Date <- ymd(era52mt$Date)
+#convert kelvin to celsius
+era52mt$temperature <- era52mt$temperature-273.15
+head(era52mt)
+dim(era52mt) #51418
+
+#precipitation from CHIRPS
+chirpstp <- read.csv(file.path(path_weather, "precip_ts.csv"))
+chirpstp <- chirpstp[,c("ID","imageId","mean")]
+names(chirpstp) <- c("ID","Date","precipitation")
+chirpstp$Date <- ymd(chirpstp$Date)
+head(chirpstp)
+dim(chirpstp) #51465
+
+#merge 
+era5 <- merge(era5tp, era52mt, by = c("ID","Date"))
+names(era5)[3] <- "precip_era5"
+dim(era5)
+weather <- merge(era5, chirpstp, by  =  c("ID","Date"))
+head(weather)
+names(weather)[5] <- "precip_chirps"
+
+#output
+path_df <- "C:/Users/zt92/Box Sync/sorghum_honduras/Dataframes/sorghum_only"
+write.csv(weather, file.path(path_df, "weather_sorghum.csv"), row.names = FALSE)
 ```
 
 #---------------------------------------------------------------#
