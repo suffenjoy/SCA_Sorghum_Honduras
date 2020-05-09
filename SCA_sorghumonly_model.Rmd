@@ -1,0 +1,187 @@
+---
+title: "SCA_model"
+author: "Zhehan"
+date: "4/17/2020"
+output: html_document
+---
+
+#Package
+```{r}
+library(ggplot2)
+library(dplyr)
+library(wavelets)
+library(caret)
+library(party)
+library(e1071)
+library(rpart)
+library(rTIMESAT)
+library(dtw)
+library(signal)
+library(bfast)
+library(imputeTS)
+library(tidyr)
+```
+
+#Read dataframes
+```{r}
+path_df <- "C:/Users/tangz/Box Sync/sorghum_honduras/Dataframes/sorghum_only"
+S2_CM <- read.csv(file.path(path_df, "S2_CM.csv"))
+weather <- read.csv(file.path(path_df, "weather_sorghum.csv"))
+
+S2_CM$Date <- as.Date(S2_CM$Date)
+weather$Date <- as.Date(weather$Date, format = "%m/%d/%Y")
+
+#combine weather and reflectance
+S2_weather <- merge(S2_CM, weather, by  = c("ID","Date"))
+head(S2_CM)
+S2_weather$precip_chirps <- NULL
+tail(S2_weather)
+dim(S2_weather)
+
+#There are sometimes two values per date per point 
+S2_weather <- aggregate(S2_weather[,c("NDVI", "GNDVI","SIPI","GCL","precip_era5","temperature")], by = list("ID"=S2_weather$ID, "Date"=S2_weather$Date, "Class"=S2_weather$Class), FUN = mean)
+
+#How many samples in each class
+unique(S2_weather$Class)
+length(unique(S2_weather$ID))  #47
+length(unique(subset(S2_weather, Class == "Healthy")$ID))  #17
+length(unique(subset(S2_weather, Class == "SCA 1-25%")$ID))  #5
+length(unique(subset(S2_weather, Class == "SCA 26-50%")$ID))  #5
+length(unique(subset(S2_weather, Class == "SCA 51-75%")$ID))  #5
+length(unique(subset(S2_weather, Class == "SCA 76-100%")$ID))  #15
+
+
+
+#add a new bindary class
+head(S2_weather)
+S2_weather$Class2 <- NA
+unique(S2_weather$Class2)
+for(i in 1:dim(S2_weather)[1]){
+  if(S2_weather$Class[i]=="Healthy"){
+    S2_weather$Class2[i]="Healthy"
+  }else{
+    S2_weather$Class2[i]="Unhealthy"
+  }
+}
+S2_weather$Class2 <- as.factor(S2_weather$Class2)
+#number of 2 classes
+length(unique(subset(S2_weather, Class2 == "Healthy")$ID))  #17
+length(unique(subset(S2_weather, Class2 == "Unhealthy")$ID))  #30
+
+
+#subset to the key time window 
+#S2_weather_kt <- subset(S2_weather, Date >= "2018-07-01" & Date <= "2018-11-01")
+
+```
+
+
+
+#Apply S-G Filtering
+```{r}
+temp_ls <- split(S2_weather, S2_weather$ID)
+for(i in 1:length(temp_ls)){
+  temp_ls[[i]]$NDVI_sg <- sgolayfilt(temp_ls[[i]]$NDVI)
+}
+S2_weather <- do.call(rbind, temp_ls)
+
+#subset to the key time window 
+S2_weather_kt <- subset(S2_weather, Date >= "2018-07-01" & Date <= "2018-11-01")
+#
+temp_ls2 <- split(S2_weather_kt, S2_weather_kt$ID)  
+sapply(temp_ls2, function(x){dim(x)[1]})  #range from 6 to 14
+unique(S2_weather_kt$Date)  #there are 22
+```
+
+#Fill in the data to make them the same length 
+```{r}
+##Interpolation 
+uni_date <- data.frame("Date"=sort(unique(S2_weather_kt$Date)))
+for(i in 1:length(temp_ls2)){
+  temp_ls2[[i]] <- merge(temp_ls2[[i]], uni_date, by = "Date", all.y = TRUE)
+  temp_ls2[[i]]$ID <- unique(temp_ls2[[i]]$ID[!is.na(temp_ls2[[i]]$ID)])
+  temp_ls2[[i]]$Class <- unique(temp_ls2[[i]]$Class[!is.na(temp_ls2[[i]]$Class)])
+  temp_ls2[[i]]$Class2 <- unique(temp_ls2[[i]]$Class2[!is.na(temp_ls2[[i]]$Class2)])
+  temp_ls2[[i]]$NDVI_sg <- na_interpolation(temp_ls2[[i]]$NDVI_sg, option = "spline")
+  
+}
+
+S2_weather_kt <- do.call(rbind, temp_ls2)
+```
+
+#Apply BFAST model 
+```{r}
+ts_ndvi <- ts(data = temp_ls[[1]]$NDVI_sg)
+test_bfast <- bfast(temp_ls[[1]]$NDVI_sg)
+```
+
+#DTW test
+```{r}
+library(dtw)
+temp_ls2 <- split(S2_weather_kt, S2_weather_kt$ID)
+query <- temp_ls2[[1]]$NDVI_sg
+template <- temp_ls2[[2]]$NDVI_sg
+alignment <- dtw(query, template, keep = TRUE)
+plot(alignment, type = "threeway")
+
+dtwMatrix <- dtw(query, template, distance.only = TRUE)
+dtwMatrix$normalizedDistance
+```
+
+#DTW test
+```{r}
+#compute DTW distance
+temp_ls <- split(S2_weather_kt, S2_weather_kt$ID)
+length(temp_ls)
+#if every sample have the same amount of data points
+sapply(temp_ls, function(x){dim(x)[1]})  #they have different number of points
+unique(S2_weather_kt$Date)
+#make the number equal 
+
+
+for(i in 1:length(temp_ls)){
+  distMatrix <- dist(temp_ls[[i]]$NDVI, method = "DTW")
+}
+distMatrix <-dist(query, method = "DTW")
+distMatrix
+hc <- hclust(distMatrix, method = "average")
+plot(hc)
+```
+
+##Wavelet transform 
+
+
+#Short-Time-Fourier-Transform
+#Time series classification 
+##Decision Tree
+```{r}
+tree <- ctree(Class2~NDVI, S2_weather_kt)
+tree
+```
+
+##Random Forest
+```{r}
+#convert long to wide
+temp_ls3 <- list()
+for(i in 1:length(temp_ls2)){
+  ndvi_ts <- temp_ls2[[i]][,c("Date","ID","Class2","NDVI_sg")]
+  #from long to wide
+  temp_ls3[[i]] <- spread(ndvi_ts, Date, NDVI_sg)
+}
+ndvi_class <- do.call(rbind, temp_ls3)
+head(ndvi_class)
+dim(ndvi_class)
+
+set.seed(777)
+train_index <- createDataPartition(ndvi_class$Class2, p = 0.6, list = FALSE)
+train_ndvits1 <- ndvi_class[train_index,2:24]
+test_ndvits1 <- ndvi_class[-train_index,2:24]
+
+trainCon <- trainControl(method = "cv", number = 10)
+rf_ndvits <- train(Class2~., data = train_ndvits1, method = "rf", trControl = trainCon, importance = TRUE, tunelength = 10)
+rf_ndvits
+pred_rf_ndvits <- predict(rf_ndvits, test_ndvits1)
+?confusionMatrix
+confusionMatrix(pred_rf_ndvits, test_ndvits1$Class2)
+```
+
+
